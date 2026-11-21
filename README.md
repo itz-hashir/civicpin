@@ -32,13 +32,19 @@ cd android
 ./gradlew testReleaseUnitTest assembleRelease
 ```
 
-The ARM64 development environment used for this build overrides AAPT2 with `android.aapt2FromMavenOverride=/tmp/website-to-apk/aapt2` in `gradle.properties`. On an ordinary AMD64 host, remove that machine-specific override and use normal SDK-installed AAPT2.
+On ordinary AMD64 hosts, no AAPT2 override is needed. For an ARM64 host whose official AAPT2 binary is unavailable, pass it only for that build:
+
+```sh
+./gradlew -Pandroid.aapt2FromMavenOverride=/absolute/path/to/aapt2 testDebugUnitTest assembleDebug
+```
+
+Never commit a host-specific AAPT2 path or `local.properties`.
 
 The normal API origin is `https://incident-app-gamma.vercel.app`, baked into the build. For local debugging only, pass `-PcivicpinApiBaseUrl=http://YOUR_HOST:3000` and configure the appropriate debug-only cleartext network policy. Localhost is `10.0.2.2` inside the stock Android emulator. The delivered release remains HTTPS-only by default.
 
 The release needs your signing key. `assembleRelease` produces an unsigned APK. Align it with `zipalign -p 4`, then sign with `apksigner`. The delivered APK here is signed with a one-off local prototype key, not a Google Play/upload signing key. Preserve your own future signing key consistently for application updates.
 
-**Deployment requirement:** the Vercel/MongoDB/Blob project credentials were not available to this build environment. Before public use, deploy this backend to the configured HTTPS origin; the existing old deployment is not modified by a local build.
+**Deployment and secrets:** deploy this commit to the existing Vercel project at the configured HTTPS origin. Set `MONGODB_URI`, `AUTH_SECRET`, and `BLOB_READ_WRITE_TOKEN` as encrypted Vercel environment variables accessible only to the project owner. MongoDB must also authorize the Vercel deployment's outbound network. GitHub Actions secrets are CI-only and do not automatically configure Vercel. Never commit `.env.local` or put credentials in the Android APK; the app contains only the public HTTPS API origin.
 
 ## Verification and operational details
 

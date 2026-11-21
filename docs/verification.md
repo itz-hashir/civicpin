@@ -38,9 +38,11 @@ An isolated browser network response supplied the report-creation/tracking fixtu
 ANDROID_HOME=/tmp/website-to-apk/cmdline-tools \
 ANDROID_SDK_ROOT=/tmp/website-to-apk/cmdline-tools \
 GRADLE_USER_HOME=/tmp/website-to-apk/.gradle-cache \
-./gradlew testDebugUnitTest assembleDebug lintDebug --no-daemon --console=plain
+./gradlew -Pandroid.aapt2FromMavenOverride=/tmp/website-to-apk/aapt2 \
+  testDebugUnitTest assembleDebug lintDebug --no-daemon --console=plain
 
-./gradlew testReleaseUnitTest assembleRelease --no-daemon --console=plain
+./gradlew -Pandroid.aapt2FromMavenOverride=/tmp/website-to-apk/aapt2 \
+  testReleaseUnitTest assembleRelease --no-daemon --console=plain
 ```
 
 Observed:
