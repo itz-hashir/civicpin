@@ -1,0 +1,10 @@
+-keepattributes Signature,*Annotation*,Exceptions
+-keep class org.osmdroid.** { *; }
+-dontwarn org.osmdroid.**
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.conscrypt.**
+-dontwarn org.openjsse.**

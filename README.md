@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Civicpin
 
-## Getting Started
+Anonymous municipal incident reporting with a native Java Android client, public web reporting/tracking, and an authenticated staff dashboard.
 
-First, run the development server:
+## Web setup
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```sh
+npm ci
+cp .env.example .env.local
+# Set real MONGODB_URI, AUTH_SECRET, and BLOB_READ_WRITE_TOKEN values.
+node --env-file=.env.local scripts/create-staff.mjs email@example.org password all
+node --env-file=.env.local scripts/setup-indexes.mjs
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The setup scripts and their exact arguments are documented in `scripts/`. Staff authentication uses signed HTTP-only session cookies. Public report and tracking requests need no account and must never be pointed at a private staff API.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+- `/report` submits category, coordinates, optional description, and one JPEG/PNG/WebP photo (maximum 4.5 MB).
+- `/track` retrieves the current status and public history using a 12-character private tracking code.
+- `/admin` is the staff-only type-scoped queue, filtered list, status updates, and public status notes.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+MongoDB lazily connects on the first real API request. A missing database configuration therefore does not prevent a production build; it produces a request-time service error.
 
-## Learn More
+## Native Android
 
-To learn more about Next.js, take a look at the following resources:
+`android/` is a standalone Gradle Java application, not a WebView shell. It uses OSMDroid for map input, native Photo Picker/camera capture, metadata-free JPEG processing, and OkHttp for the same API.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Requirements: JDK 17, Android SDK 36, minimum supported Android SDK 26 (Android 8).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```sh
+cd android
+./gradlew testDebugUnitTest assembleDebug lintDebug
+./gradlew testReleaseUnitTest assembleRelease
+```
 
-## Deploy on Vercel
+The ARM64 development environment used for this build overrides AAPT2 with `android.aapt2FromMavenOverride=/tmp/website-to-apk/aapt2` in `gradle.properties`. On an ordinary AMD64 host, remove that machine-specific override and use normal SDK-installed AAPT2.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The normal API origin is `https://incident-app-gamma.vercel.app`, baked into the build. For local debugging only, pass `-PcivicpinApiBaseUrl=http://YOUR_HOST:3000` and configure the appropriate debug-only cleartext network policy. Localhost is `10.0.2.2` inside the stock Android emulator. The delivered release remains HTTPS-only by default.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The release needs your signing key. `assembleRelease` produces an unsigned APK. Align it with `zipalign -p 4`, then sign with `apksigner`. The delivered APK here is signed with a one-off local prototype key, not a Google Play/upload signing key. Preserve your own future signing key consistently for application updates.
+
+**Deployment requirement:** the Vercel/MongoDB/Blob project credentials were not available to this build environment. Before public use, deploy this backend to the configured HTTPS origin; the existing old deployment is not modified by a local build.
+
+## Verification and operational details
+
+- [Verification evidence](docs/verification.md)
+- [Database design](docs/database-design.md)
+- [Implementation, deployment, privacy, and real-user testing protocol](docs/final-report.md)
+- [Implementation plan](docs/superpowers/plans/2026-11-19-native-incident-platform.md)
+
+No human usability study or physical-device Android run is claimed by the automated reports.
