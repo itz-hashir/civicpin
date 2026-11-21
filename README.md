@@ -46,6 +46,10 @@ The release needs your signing key. `assembleRelease` produces an unsigned APK. 
 
 **Deployment and secrets:** deploy this commit to the existing Vercel project at the configured HTTPS origin. Set `MONGODB_URI`, `AUTH_SECRET`, and `BLOB_READ_WRITE_TOKEN` as encrypted Vercel environment variables accessible only to the project owner. MongoDB must also authorize the Vercel deployment's outbound network. GitHub Actions secrets are CI-only and do not automatically configure Vercel. Never commit `.env.local` or put credentials in the Android APK; the app contains only the public HTTPS API origin.
 
+## Realtime updates
+
+The public tracking page, the staff dashboard and the native Android app poll the same API every five seconds while visible. A staff status change or status note appears on public tracking and in the Android app without a manual refresh. The staff queue picks up a newly submitted public report the same way. The website and APK share MongoDB, not separate offline copies.
+
 ## Verification and operational details
 
 - [Verification evidence](docs/verification.md)

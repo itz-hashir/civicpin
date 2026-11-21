@@ -26,10 +26,15 @@ export default function Dashboard({ email, types = [] }) {
   const [actionErrors, setActionErrors] = useState({});
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
+  const [live, setLive] = useState(true);
+  const [syncedAt, setSyncedAt] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const load = useCallback(async (options = {}) => {
+    const silent = options?.silent === true;
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const response = await fetch("/api/admin/reports", {
         headers: { Accept: "application/json" },
@@ -41,25 +46,43 @@ export default function Dashboard({ email, types = [] }) {
       }
       const json = await readJson(response);
       if (!response.ok) {
+        setLive(false);
         setError(json.error || "Reports could not be loaded. Any existing list may be out of date.");
         return;
       }
       if (!Array.isArray(json.reports)) {
+        setLive(false);
         setError("The service returned an unexpected report list. Refresh to try again.");
         return;
       }
       setReports(json.reports);
+      setLive(true);
+      setSyncedAt(new Date());
+      setError("");
     } catch {
+      setLive(false);
       setError(connectionError("The report queue could not be refreshed. Any existing list may be out of date."));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [router]);
 
   useEffect(() => {
-    const frame = requestAnimationFrame(load);
+    const frame = requestAnimationFrame(() => load());
     return () => cancelAnimationFrame(frame);
   }, [load]);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible" && actionPending === null) load({ silent: true });
+    };
+    const timer = window.setInterval(refresh, 5000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [load, actionPending]);
 
   const visibleReports = useMemo(
     () => filter ? reports.filter((report) => report.status === filter) : reports,
@@ -177,7 +200,10 @@ export default function Dashboard({ email, types = [] }) {
           </div>
           <div className="queue-controls">
             <span aria-live="polite">Showing {visibleReports.length} of {reports.length}</span>
-            <button type="button" onClick={load} className="button button--secondary button--small" disabled={loading || actionPending !== null}>
+            <span className={`tracking-live${live ? "" : " tracking-live--paused"}`} title="This queue refreshes automatically every 5 seconds while the tab is visible">
+              {live ? "Live" : "Live paused"}{syncedAt ? ` · ${syncedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
+            </span>
+            <button type="button" onClick={() => load()} className="button button--secondary button--small" disabled={loading || actionPending !== null}>
               {loading ? "Refreshing…" : "Refresh queue"}
             </button>
           </div>

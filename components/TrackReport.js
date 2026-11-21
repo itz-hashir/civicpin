@@ -32,28 +32,34 @@ export default function TrackReport({ initialCode = "" }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [recent, setRecent] = useState([]);
+  const [liveAt, setLiveAt] = useState(null);
+  const [live, setLive] = useState(true);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setRecent(readSavedReports()));
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  const lookup = useCallback(async (value) => {
+  const lookup = useCallback(async (value, options = {}) => {
     const normalized = value.trim().toUpperCase();
+    const silent = options?.silent === true;
     if (!normalized) {
-      setError("Enter your tracking code.");
+      if (!silent) setError("Enter your tracking code.");
       return;
     }
     if (!navigator.onLine) {
-      setError("You appear to be offline. Reconnect to check this report.");
+      if (silent) setLive(false);
+      else setError("You appear to be offline. Reconnect to check this report.");
       return;
     }
 
-    setCode(normalized);
-    setLoadedCode(normalized);
-    setLoading(true);
-    setError("");
-    setReport(null);
+    if (!silent) {
+      setCode(normalized);
+      setLoadedCode(normalized);
+      setLoading(true);
+      setError("");
+      setReport(null);
+    }
     try {
       const response = await fetch(`/api/reports/${encodeURIComponent(normalized)}`, {
         headers: { Accept: "application/json" },
@@ -61,16 +67,23 @@ export default function TrackReport({ initialCode = "" }) {
       });
       const data = await readJson(response);
       if (!response.ok) {
-        setError(response.status === 404
-          ? "No report matches that code. Check each letter and number, then try again."
-          : data.error || "The report could not be loaded. Try again shortly.");
+        if (silent) {
+          setLive(false);
+        } else {
+          setError(response.status === 404
+            ? "No report matches that code. Check each letter and number, then try again."
+            : data.error || "The report could not be loaded. Try again shortly.");
+        }
         return;
       }
       setReport(data);
+      setLive(true);
+      setLiveAt(new Date());
     } catch {
-      setError(connectionError("The reporting service could not be reached. Check your connection and try again."));
+      if (silent) setLive(false);
+      else setError(connectionError("The reporting service could not be reached. Check your connection and try again."));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -80,6 +93,21 @@ export default function TrackReport({ initialCode = "" }) {
     const frame = requestAnimationFrame(() => lookup(normalized));
     return () => cancelAnimationFrame(frame);
   }, [initialCode, lookup]);
+
+  useEffect(() => {
+    if (!loadedCode || !report) return undefined;
+    let disposed = false;
+    const refresh = () => {
+      if (!disposed && document.visibilityState === "visible") lookup(loadedCode, { silent: true });
+    };
+    const timer = window.setInterval(refresh, 5000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [loadedCode, report, lookup]);
   const inputPattern = "[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{12}";
 
   function submit(event) {
@@ -146,6 +174,11 @@ export default function TrackReport({ initialCode = "" }) {
               <p className="eyebrow">Report {loadedCode}</p>
               <h2 id="report-status-heading">{typeLabel(report.type)}</h2>
               <p>Submitted {formatDate(report.createdAt)}</p>
+              {liveAt && (
+                <p className={`tracking-live${live ? "" : " tracking-live--paused"}`}>
+                  {live ? "Live" : "Live paused"} · checked at {liveAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </p>
+              )}
             </div>
             <span className={`status-badge status-badge--${report.status || "submitted"}`}>{statusLabel(report.status)}</span>
           </header>

@@ -6,6 +6,8 @@ import android.content.Intent;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
@@ -24,6 +26,7 @@ import okhttp3.Call;
 
 public final class TrackActivity extends AppCompatActivity {
     private static final String EXTRA_CODE = "com.incidentapp.android.extra.TRACKING_CODE";
+    private static final long LIVE_REFRESH_MILLIS = 5_000L;
 
     private ActivityTrackBinding binding;
     private CivicApi api;
@@ -31,6 +34,15 @@ public final class TrackActivity extends AppCompatActivity {
     private int requestVersion;
     private boolean destroyed;
     private String lastRequestedCode;
+    private final Handler liveHandler = new Handler(Looper.getMainLooper());
+    private boolean visible;
+    private final Runnable liveRefresh = new Runnable() {
+        @Override public void run() {
+            if (!visible || destroyed || isFinishing() || isDestroyed()) return;
+            if (lastRequestedCode != null && activeCall == null) requestReport(lastRequestedCode, true);
+            liveHandler.postDelayed(this, LIVE_REFRESH_MILLIS);
+        }
+    };
 
     public static Intent intent(Context context, String code) {
         Intent intent = new Intent(context, TrackActivity.class);
@@ -73,6 +85,19 @@ public final class TrackActivity extends AppCompatActivity {
         super.onSaveInstanceState(outState);
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        visible = true;
+        liveHandler.removeCallbacks(liveRefresh);
+        liveHandler.postDelayed(liveRefresh, LIVE_REFRESH_MILLIS);
+    }
+
+    @Override protected void onPause() {
+        visible = false;
+        liveHandler.removeCallbacks(liveRefresh);
+        super.onPause();
+    }
+
     private void findReport() {
         String raw = binding.codeInput.getText() == null ? "" : binding.codeInput.getText().toString();
         binding.codeInputLayout.setError(null);
@@ -87,19 +112,28 @@ public final class TrackActivity extends AppCompatActivity {
         }
         binding.codeInput.setText(code);
         binding.codeInput.setSelection(code.length());
+        requestReport(code, false);
+    }
+
+    private void requestReport(String code, boolean silent) {
         lastRequestedCode = code;
-        if (activeCall != null) activeCall.cancel();
+        if (activeCall != null) {
+            if (silent) return;
+            activeCall.cancel();
+        }
         int version = ++requestVersion;
-        setLoading(true);
-        binding.resultCard.setVisibility(View.GONE);
-        binding.errorText.setVisibility(View.GONE);
-        binding.retryButton.setVisibility(View.GONE);
+        if (!silent) {
+            setLoading(true);
+            binding.resultCard.setVisibility(View.GONE);
+            binding.errorText.setVisibility(View.GONE);
+            binding.retryButton.setVisibility(View.GONE);
+        }
         activeCall = api.trackReport(code, new CivicApi.ResultCallback<TrackedReport>() {
             @Override public void onSuccess(TrackedReport result) {
                 postIfCurrent(version, () -> {
                     setLoading(false);
                     activeCall = null;
-                    showResult(result);
+                    showResult(result, !silent);
                 });
             }
 
@@ -107,7 +141,7 @@ public final class TrackActivity extends AppCompatActivity {
                 postIfCurrent(version, () -> {
                     setLoading(false);
                     activeCall = null;
-                    if (error.reason != ApiError.Reason.CANCELLED) showNetworkError(error);
+                    if (!silent && error.reason != ApiError.Reason.CANCELLED) showNetworkError(error);
                 });
             }
         });
@@ -155,7 +189,7 @@ public final class TrackActivity extends AppCompatActivity {
         binding.errorText.announceForAccessibility(message);
     }
 
-    private void showResult(TrackedReport report) {
+    private void showResult(TrackedReport report, boolean announce) {
         binding.errorText.setVisibility(View.GONE);
         binding.retryButton.setVisibility(View.GONE);
         binding.resultCard.setVisibility(View.VISIBLE);
@@ -167,7 +201,7 @@ public final class TrackActivity extends AppCompatActivity {
         binding.photoLinkButton.setVisibility(report.photoUrl == null ? View.GONE : View.VISIBLE);
         binding.locationLinkButton.setOnClickListener(view -> openLocation(report.latitude, report.longitude));
         binding.photoLinkButton.setOnClickListener(view -> openWebLink(report.photoUrl));
-        binding.resultCard.announceForAccessibility(getString(R.string.issue_type, getTypeLabel(report.type)));
+        if (announce) binding.resultCard.announceForAccessibility(getString(R.string.issue_type, getTypeLabel(report.type)));
     }
 
     private void renderTimeline(TrackedReport report) {
@@ -291,6 +325,7 @@ public final class TrackActivity extends AppCompatActivity {
         destroyed = true;
         requestVersion++;
         if (activeCall != null) activeCall.cancel();
+        liveHandler.removeCallbacks(liveRefresh);
         super.onDestroy();
     }
 }

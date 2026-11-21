@@ -106,3 +106,23 @@ The updated local Next.js backend successfully read the same MongoDB tracking re
 The deployed GitHub/Vercel source predates the public `POST /api/reports` route and redesigned public web pages. The Android client's report body, coordinates, JPEG content type, and expected 12-character 201 response are implemented and isolated-HTTP-tested, but a phone **cannot submit to the current public Vercel backend** because that route returns 404. The existing database, staff dashboard, status writes, and public tracking APIs are functional; that does not establish end-to-end live mobile submission.
 
 An authorized deployment of the current backend/public routes and a working photo-storage configuration are still required. No Vercel project or GitHub write access and no Blob write token were available in this environment, so no deployment or public-photo-storage claim is made.
+
+### Live polling and database integration test (2026-11-21)
+
+The current branch's production Next.js build was run locally against the real MongoDB URI from `.env.local`. The temporary test data created here was deleted after the run; the database then held exactly **one report and two staff accounts** again.
+
+| Live check | Result |
+| --- | --- |
+| `POST /api/reports` with no photo | **400** `Photo is required` |
+| `POST /api/reports` with a JPEG but no Vercel Blob token in the local environment | **503** `Photo upload is temporarily unavailable`; no partial report recorded |
+| Current validation and Mongo insert through the report handlers, using a real JPEG and a temporary Vercel Blob upload return value | **201**, a valid 12-character tracking code, public tracking readable via the **deployed Vercel API** |
+| Temporary bcrypt staff account login and signed staff session | **200** `{"ok":true}` |
+| Staff queue with the new record | Present, status `submitted`, one history entry |
+| Staff `PATCH` to `in_progress` with a public note | **200**; queue and deployed tracking both updated; second history entry/note persisted |
+| Browser check with the public tracking page already open | Status and note changed in place, no reload/navigation; `Live · checked at 06:34 AM` was rendered |
+| Staff `PATCH` to `fixed` | **200**; deployed tracking history showed `submitted → in_progress → fixed` with both notes |
+| Cleanup | The one temporary report and the one temporary staff account were deleted; final counts were **1 report / 2 staff** and the tracking code returned **404** |
+
+**Not verified in this environment:** a real write to Vercel Blob. There is no Blob token in the local `.env`, and an authorized Vercel project edit is not available. The production deployment will need `BLOB_READ_WRITE_TOKEN` before photo submission can succeed. Also, the public Vercel deployment still runs the older branch until the operator pushes; its `POST /api/reports` is **404**. Android UI behavior is covered by compiling, release unit tests, signing and archive verification; no emulator or physical device is attached for a runtime test.
+
+The rendered DOM check used a local headless browser against the current production build for the public tracking page only. Staff data was checked through the authenticated API and the deployed tracking response; no staff credentials are recorded here.
