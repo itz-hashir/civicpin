@@ -7,11 +7,16 @@ MongoDB stores two independent identities: a public tracking code and a staff ac
 | Field | Type / constraint | Purpose |
 | `_id` | MongoDB ObjectId | Internal staff-dashboard update key; never used for public tracking |
 | `trackingCode` | 12 characters from `23456789ABCDEFGHJKLMNPQRSTUVWXYZ`, unique | Anonymous lookup |
-| `photoUrl` | Public Vercel Blob URL | Staff-only dashboard display |
-| `photoPathname` | Vercel Blob storage object key | Upload cleanup after failed persistence |
+| `photoUrl` | Public Vercel Blob URL | Staff dashboard and optional public tracking display |
+| `photoPathname` | Vercel Blob storage object key | Upload cleanup and opted-in resolution deletion |
 | `type` | `lighting`, `drainage`, `roads`, `waste`, `water`, `other` | Staff routing |
 | `description` | String, 0–1000 UTF-16 characters | Optional citizen-provided description |
-| `location` | GeoJSON `Point`; `[longitude, latitude]` | Placement on map and municipal-area filter |
+| `location` | GeoJSON `Point`; `[longitude, latitude]` | Exact staff location and municipal-area filter |
+| `publicLocation` | GeoJSON `Point` or `null` | Approximate or exact coordinates exposed through public tracking |
+| `locationVisibility` | `approximate`, `exact`, `staff` | Reporter-selected public location precision |
+| `photoVisibility` | `staff`, `tracking` | Reporter-selected photo visibility |
+| `deleteEvidenceOnResolution` | Boolean | Whether fixing the report deletes its photo and coordinates |
+| `evidenceRemovedAt` | UTC Date, present after deletion | Records that resolution cleanup occurred |
 | `status` | `submitted`, `in_progress`, `fixed` | Public progress state |
 | `statusHistory` | `{ status, changedAt, note }[]` | Immutable status timeline; starts at submission |
 | `createdAt` | UTC Date | Submission time |
@@ -45,7 +50,9 @@ Sessions are signed, eight-hour JWTs stored in a `HttpOnly; SameSite=Lax` cookie
 
 ## Privacy model
 
-The anonymous channel deliberately allows no user signup. The random ten-character code is the public capability to look up a report. Photo URLs are returned only to staff (not by public tracking) and reports never include user identifiers. Both clients sanitize photos before upload where their platform supports re-encoding; PNG remains PNG to avoid JPEG-related decode/encode errors. The server also validates content signatures rather than trusting the submitted filename or MIME type alone.
+The anonymous channel deliberately allows no user signup. The random twelve-character code is the public capability to look up a report. New reports default to coordinates rounded to two decimal places for public tracking and staff-only photos; staff retain the exact coordinates and evidence needed to respond. Reporters may instead choose exact public coordinates, no public location, or a public tracking photo. Legacy reports without privacy fields retain their original exact-location/public-photo behavior.
+
+When a reporter opts into resolution deletion, the staff transition to `fixed` deletes the Blob object and removes its URL, object key, exact coordinates, and public coordinates. Status and status history remain. A failed Blob deletion prevents the status transition so it can be retried. Both clients sanitize photos before upload where their platform supports re-encoding, and the server validates content signatures rather than trusting the submitted filename or MIME type alone.
 
 ## Setup
 

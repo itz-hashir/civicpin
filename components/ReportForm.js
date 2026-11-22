@@ -31,6 +31,11 @@ export default function ReportForm() {
   const [errors, setErrors] = useState({});
   const [result, setResult] = useState(null);
   const [copyMessage, setCopyMessage] = useState("");
+  const [mapEnabled, setMapEnabled] = useState(false);
+  const [locationVisibility, setLocationVisibility] = useState("approximate");
+  const [photoVisibility, setPhotoVisibility] = useState("staff");
+  const [deleteEvidenceOnResolution, setDeleteEvidenceOnResolution] = useState(false);
+  const [saveOnDevice, setSaveOnDevice] = useState(false);
 
   const busy = phase === "processing" || phase === "submitting";
 
@@ -135,6 +140,9 @@ export default function ReportForm() {
     body.append("lat", String(position.lat));
     body.append("lng", String(position.lng));
     body.append("photo", photo, photo.name);
+    body.append("locationVisibility", locationVisibility);
+    body.append("photoVisibility", photoVisibility);
+    if (deleteEvidenceOnResolution) body.append("deleteEvidenceOnResolution", "true");
 
     try {
       const response = await fetch("/api/reports", { method: "POST", body });
@@ -148,8 +156,8 @@ export default function ReportForm() {
         return;
       }
       const code = data.code.trim().toUpperCase();
-      const saved = saveReportLocally({ code, type });
-      setResult({ code, saved });
+      const saved = saveOnDevice ? saveReportLocally({ code, type }) : false;
+      setResult({ code, saved, saveRequested: saveOnDevice });
     } catch {
       setErrors({ form: connectionError("The service did not confirm your report. Check your connection before trying again.") });
     } finally {
@@ -193,10 +201,12 @@ export default function ReportForm() {
         <h2 id="submission-success-title">Save your private tracking code</h2>
         <p>The service accepted your report. This code is the only way to look up its progress, so keep it somewhere safe.</p>
         <div className="tracking-code" aria-label={`Tracking code ${result.code}`}>{result.code}</div>
-        <p className={result.saved ? "save-confirmation" : "inline-warning"}>
+        <p className={result.saved ? "save-confirmation" : result.saveRequested ? "inline-warning" : "save-opt-out"}>
           {result.saved
-            ? "Saved in this browser. Anyone using this browser may be able to see it."
-            : "This browser could not save the code. Copy it now before leaving this page."}
+            ? "Saved in this browser because you opted in. Anyone using this browser may be able to see it."
+            : result.saveRequested
+              ? "This browser could not save the code. Copy it now before leaving this page."
+              : "Not saved in this browser. Copy the code or tracking link before leaving this page."}
         </p>
         <div className="success-actions">
           <button type="button" className="button button--primary" onClick={copyCode}>Copy code</button>
@@ -214,6 +224,11 @@ export default function ReportForm() {
           updatePhoto(null);
           if (fileInput.current) fileInput.current.value = "";
           setCopyMessage("");
+          setMapEnabled(false);
+          setLocationVisibility("approximate");
+          setPhotoVisibility("staff");
+          setDeleteEvidenceOnResolution(false);
+          setSaveOnDevice(false);
         }}>Submit another report</button>
       </section>
     );
@@ -232,7 +247,14 @@ export default function ReportForm() {
             </div>
           </div>
           <div className="map-frame">
-            <MapPickerLoader position={position} onPick={pickPosition} />
+            {mapEnabled ? <MapPickerLoader position={position} onPick={pickPosition} /> : (
+              <div className="map-consent">
+                <PinIcon />
+                <h3>Use a map or enter coordinates</h3>
+                <p>The interactive map loads tiles from OpenStreetMap, which receives your IP address and map view. Loading it is optional.</p>
+                <button type="button" className="button button--secondary" onClick={() => setMapEnabled(true)}>Load interactive map</button>
+              </div>
+            )}
           </div>
           <div className="location-toolbar">
             <button type="button" className="button button--secondary button--small" onClick={useMyLocation} disabled={locating}>
@@ -251,7 +273,7 @@ export default function ReportForm() {
             </div>
           </div>
           {errors.location && <p id="location-error" className="field-error" role="alert">{errors.location}</p>}
-          <p className="field-help">The pin and photo are visible to staff and may be shown on your tracking page.</p>
+          <p className="field-help">Staff receive the exact pin. Choose below whether your tracking page receives an approximate pin, the exact pin, or no location.</p>
         </section>
 
         <section className="form-card" aria-labelledby="evidence-heading">
@@ -286,9 +308,55 @@ export default function ReportForm() {
           )}
         </section>
 
-        <section className="form-card" aria-labelledby="details-heading">
+        <section className="form-card" aria-labelledby="privacy-heading">
           <div className="section-heading">
             <span className="step-number">03</span>
+            <div>
+              <h2 id="privacy-heading">Choose your privacy options</h2>
+              <p>These choices control public tracking and stored evidence. Staff can still assess the exact report.</p>
+            </div>
+          </div>
+          <fieldset className="privacy-choice">
+            <legend>Location on your tracking page</legend>
+            <label className="choice-card">
+              <input type="radio" name="locationVisibility" value="approximate" checked={locationVisibility === "approximate"} onChange={(event) => setLocationVisibility(event.target.value)} />
+              <span><strong>Approximate area</strong><small>Round coordinates to about 1 km. Staff still receive the exact pin.</small></span>
+            </label>
+            <label className="choice-card">
+              <input type="radio" name="locationVisibility" value="exact" checked={locationVisibility === "exact"} onChange={(event) => setLocationVisibility(event.target.value)} />
+              <span><strong>Exact pin</strong><small>Anyone with your tracking code can view the exact coordinates.</small></span>
+            </label>
+            <label className="choice-card">
+              <input type="radio" name="locationVisibility" value="staff" checked={locationVisibility === "staff"} onChange={(event) => setLocationVisibility(event.target.value)} />
+              <span><strong>Staff only</strong><small>Your tracking page shows no location.</small></span>
+            </label>
+          </fieldset>
+          <fieldset className="privacy-choice">
+            <legend>Photo on your tracking page</legend>
+            <label className="choice-card">
+              <input type="radio" name="photoVisibility" value="staff" checked={photoVisibility === "staff"} onChange={(event) => setPhotoVisibility(event.target.value)} />
+              <span><strong>Staff only</strong><small>The tracking response does not include the photo.</small></span>
+            </label>
+            <label className="choice-card">
+              <input type="radio" name="photoVisibility" value="tracking" checked={photoVisibility === "tracking"} onChange={(event) => setPhotoVisibility(event.target.value)} />
+              <span><strong>Include with tracking</strong><small>Anyone with your tracking code can view the photo.</small></span>
+            </label>
+          </fieldset>
+          <div className="privacy-checks">
+            <label className="check-control">
+              <input type="checkbox" name="deleteEvidenceOnResolution" value="true" checked={deleteEvidenceOnResolution} onChange={(event) => setDeleteEvidenceOnResolution(event.target.checked)} />
+              <span><strong>Delete evidence when resolved</strong><small>When staff mark the report fixed, delete the photo and exact location. Status history remains.</small></span>
+            </label>
+            <label className="check-control">
+              <input type="checkbox" checked={saveOnDevice} onChange={(event) => setSaveOnDevice(event.target.checked)} />
+              <span><strong>Save tracking code on this device</strong><small>Off by default. Saved codes are visible to other people using this browser and can be removed on the tracking page.</small></span>
+            </label>
+          </div>
+        </section>
+
+        <section className="form-card" aria-labelledby="details-heading">
+          <div className="section-heading">
+            <span className="step-number">04</span>
             <div>
               <h2 id="details-heading">Describe the issue</h2>
               <p>Choose a category and add any details that are safe to share.</p>

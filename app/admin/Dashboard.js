@@ -246,16 +246,22 @@ export default function Dashboard({ email, types = [] }) {
                         {report.trackingCode && <code className="staff-code">{report.trackingCode}</code>}
                       </td>
                       <td data-label="Type"><strong>{typeLabel(report.type)}</strong></td>
-                      <td data-label="Description"><p className="report-description">{report.description || "No description provided."}</p></td>
+                      <td data-label="Description">
+                        <p className="report-description">{report.description || "No description provided."}</p>
+                        <p className="privacy-summary">
+                          Public: {report.locationVisibility === "staff" ? "no location" : report.locationVisibility === "exact" ? "exact location" : report.locationVisibility === "approximate" ? "approximate location" : "exact location"} · {report.photoVisibility === "staff" ? "staff-only photo" : "tracking photo"}
+                          {report.deleteEvidenceOnResolution ? " · delete evidence on resolution" : ""}
+                        </p>
+                      </td>
                       <td data-label="Evidence">
                         {report.photoUrl ? (
                           <a href={report.photoUrl} target="_blank" rel="noreferrer" className="external-link">Open photo<span className="visually-hidden"> for report {report.trackingCode || report._id} (opens in a new tab)</span></a>
-                        ) : <span className="muted">Not available</span>}
+                        ) : <span className="muted">{report.evidenceRemovedAt ? "Deleted on resolution" : "Not available"}</span>}
                       </td>
                       <td data-label="Location">
                         {coordinates ? (
                           <a href={osmUrl(coordinates)} target="_blank" rel="noreferrer" className="external-link">Open OSM map<span className="visually-hidden"> for report {report.trackingCode || report._id} (opens in a new tab)</span></a>
-                        ) : <span className="muted">Not available</span>}
+                        ) : <span className="muted">{report.evidenceRemovedAt ? "Deleted on resolution" : "Not available"}</span>}
                       </td>
                       <td data-label="Status"><span className={`status-badge status-badge--${report.status || "submitted"}`}>{statusLabel(report.status)}</span></td>
                       <td data-label="Update" className="actions-cell">

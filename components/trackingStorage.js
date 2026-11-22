@@ -26,6 +26,25 @@ export function saveReportLocally({ code, type }) {
   }
 }
 
+export function removeSavedReport(code) {
+  try {
+    const next = readSavedReports().filter((report) => report.code !== code);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearSavedReports() {
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function copyText(text) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);

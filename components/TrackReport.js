@@ -13,7 +13,7 @@ import {
   statusLabel,
   typeLabel,
 } from "./reportUtils";
-import { readSavedReports } from "./trackingStorage";
+import { clearSavedReports, readSavedReports, removeSavedReport } from "./trackingStorage";
 
 function publicPhotoUrl(value) {
   if (!value) return null;
@@ -113,6 +113,14 @@ export default function TrackReport({ initialCode = "" }) {
   function submit(event) {
     event.preventDefault();
     lookup(code);
+  }
+
+  function removeCode(value) {
+    if (removeSavedReport(value)) setRecent((current) => current.filter((item) => item.code !== value));
+  }
+
+  function removeAllCodes() {
+    if (clearSavedReports()) setRecent([]);
   }
 
   const currentStatus = STATUSES.findIndex((status) => status.value === report?.status);
@@ -223,19 +231,24 @@ export default function TrackReport({ initialCode = "" }) {
             <div className="evidence-column">
               <section className="detail-card" aria-labelledby="public-location-heading">
                 <h3 id="public-location-heading">Reported location</h3>
-                {coordinates ? (
+                {report.evidenceRemoved ? (
+                  <p className="empty-detail">The location was deleted when this report was resolved.</p>
+                ) : coordinates ? (
                   <>
-                    <p className="coordinates">{coordinates.lat.toFixed(6)}, {coordinates.lng.toFixed(6)}</p>
+                    {report.locationPrecision === "approximate" && <p className="privacy-note">Approximate area, rounded by the reporter for privacy.</p>}
+                    <p className="coordinates">{coordinates.lat.toFixed(report.locationPrecision === "approximate" ? 2 : 6)}, {coordinates.lng.toFixed(report.locationPrecision === "approximate" ? 2 : 6)}</p>
                     <a className="external-link" href={osmUrl(coordinates)} target="_blank" rel="noreferrer">
                       Open location in OpenStreetMap<span className="visually-hidden"> (opens in a new tab)</span>
                     </a>
                   </>
-                ) : <p className="empty-detail">A public location is not available for this report.</p>}
+                ) : <p className="empty-detail">The reporter kept the exact location staff-only.</p>}
               </section>
 
               <section className="detail-card" aria-labelledby="public-evidence-heading">
                 <h3 id="public-evidence-heading">Photo evidence</h3>
-                {photoUrl ? (
+                {report.evidenceRemoved ? (
+                  <p className="empty-detail">The photo was deleted when this report was resolved.</p>
+                ) : photoUrl ? (
                   <>
                     <a className="evidence-image" href={photoUrl} target="_blank" rel="noreferrer" aria-label="Open full-size incident photo in a new tab">
                       {/* Blob storage URLs are supplied at runtime and are not configurable remote images. */}
@@ -244,7 +257,7 @@ export default function TrackReport({ initialCode = "" }) {
                     </a>
                     <a className="external-link" href={photoUrl} target="_blank" rel="noreferrer">Open full-size photo<span className="visually-hidden"> (opens in a new tab)</span></a>
                   </>
-                ) : <p className="empty-detail">Public photo evidence is not available for this report.</p>}
+                ) : <p className="empty-detail">The reporter kept photo evidence staff-only.</p>}
               </section>
             </div>
           </div>
@@ -253,9 +266,12 @@ export default function TrackReport({ initialCode = "" }) {
 
       {!report && !loading && recent.length > 0 && (
         <section className="recent-reports" aria-labelledby="recent-heading">
-          <div>
-            <h2 id="recent-heading">Saved on this device</h2>
-            <p>These codes were saved after successful submissions in this browser.</p>
+          <div className="recent-reports__heading">
+            <div>
+              <h2 id="recent-heading">Saved on this device</h2>
+              <p>Tracking codes saved in this browser appear here. Remove them when using a shared device.</p>
+            </div>
+            <button type="button" className="text-button" onClick={removeAllCodes}>Clear saved codes</button>
           </div>
           <ul>
             {recent.map((item) => (
@@ -264,6 +280,7 @@ export default function TrackReport({ initialCode = "" }) {
                   <span><strong>{typeLabel(item.type)}</strong><code>{item.code}</code></span>
                   <span>View report</span>
                 </Link>
+                <button type="button" className="button button--secondary button--small" onClick={() => removeCode(item.code)} aria-label={`Remove saved code ${item.code}`}>Remove</button>
               </li>
             ))}
           </ul>

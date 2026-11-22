@@ -20,6 +20,9 @@ function reportRequest({
   lng = "-74.006",
   image = photo(),
   includePhoto = true,
+  locationVisibility = null,
+  photoVisibility = null,
+  deleteEvidenceOnResolution = null,
 } = {}) {
   const form = new FormData();
   if (type !== null) form.set("type", type);
@@ -27,6 +30,9 @@ function reportRequest({
   if (lat !== null) form.set("lat", lat);
   if (lng !== null) form.set("lng", lng);
   if (includePhoto) form.set("photo", image);
+  if (locationVisibility !== null) form.set("locationVisibility", locationVisibility);
+  if (photoVisibility !== null) form.set("photoVisibility", photoVisibility);
+  if (deleteEvidenceOnResolution !== null) form.set("deleteEvidenceOnResolution", deleteEvidenceOnResolution);
   return new Request("http://localhost/api/reports", { method: "POST", body: form });
 }
 
@@ -119,6 +125,10 @@ test("POST stores a complete anonymous report and returns only its uppercase cod
     type: "roads",
     description: "Broken curb",
     location: { type: "Point", coordinates: [-74.006, 40.7128] },
+    publicLocation: { type: "Point", coordinates: [-74.01, 40.71] },
+    locationVisibility: "approximate",
+    photoVisibility: "staff",
+    deleteEvidenceOnResolution: false,
     photoUrl: "https://blob.test/reports/ABCDEFGHJKLM.jpg",
     photoPathname: "reports/ABCDEFGHJKLM.jpg",
     status: "submitted",
@@ -156,6 +166,9 @@ test("POST rejects invalid report shapes before storage", async (t) => {
     [{ lat: null }, /Latitude is required/],
     [{ lng: "" }, /Longitude is required/],
     [{ description: "x".repeat(1001) }, /1000 characters/],
+    [{ locationVisibility: "private" }, /Invalid location visibility/],
+    [{ photoVisibility: "public" }, /Invalid photo visibility/],
+    [{ deleteEvidenceOnResolution: "false" }, /Invalid evidence deletion preference/],
   ];
   for (const [change, message] of cases) {
     await t.test(String(message), async () => {
@@ -394,14 +407,94 @@ test("GET returns only public tracking fields and normalizes code casing", async
   assert.deepEqual(response.body, {
     type: "water",
     location: { type: "Point", coordinates: [12.5, 45] },
+    locationPrecision: "exact",
     photoUrl: "https://blob.test/reports/ABCDEFGHJKLM.jpg",
     status: "in_progress",
     statusHistory: [{ status: "in_progress", changedAt: NOW.toISOString(), note: "Crew assigned" }],
     createdAt: NOW.toISOString(),
+    evidenceRemoved: false,
   });
   for (const field of ["_id", "trackingCode", "description", "photoPathname", "updatedAt", "staffEmail", "session"]) {
     assert.equal(Object.hasOwn(response.body, field), false);
   }
+});
+
+test("POST preserves explicit privacy choices while keeping exact staff coordinates", async () => {
+  const app = harness();
+  const response = await app.POST(reportRequest({
+    locationVisibility: "exact",
+    photoVisibility: "tracking",
+    deleteEvidenceOnResolution: "true",
+  }));
+  assert.equal(response.status, 201);
+  const stored = app.db.records.get("ABCDEFGHJKLM");
+  assert.deepEqual(stored.location, { type: "Point", coordinates: [-74.006, 40.7128] });
+  assert.deepEqual(stored.publicLocation, stored.location);
+  assert.equal(stored.locationVisibility, "exact");
+  assert.equal(stored.photoVisibility, "tracking");
+  assert.equal(stored.deleteEvidenceOnResolution, true);
+});
+
+test("GET enforces each new public location and photo visibility combination", async (t) => {
+  const base = {
+    trackingCode: "ABCDEFGHJKLM",
+    type: "roads",
+    description: "staff only",
+    location: { type: "Point", coordinates: [-74.006, 40.7128] },
+    publicLocation: { type: "Point", coordinates: [-74.01, 40.71] },
+    photoUrl: "https://blob.test/reports/ABCDEFGHJKLM.jpg",
+    photoPathname: "reports/ABCDEFGHJKLM.jpg",
+    deleteEvidenceOnResolution: false,
+    status: "submitted",
+    statusHistory: [],
+    createdAt: NOW,
+  };
+  const cases = [
+    { locationVisibility: "approximate", photoVisibility: "staff", coordinates: [-74.01, 40.71], photo: false },
+    { locationVisibility: "exact", photoVisibility: "tracking", publicLocation: base.location, coordinates: [-74.006, 40.7128], photo: true },
+    { locationVisibility: "staff", photoVisibility: "staff", publicLocation: null, coordinates: null, photo: false },
+  ];
+  for (const example of cases) {
+    await t.test(`${example.locationVisibility}/${example.photoVisibility}`, async () => {
+      const app = harness({ initialReports: [{ ...base, ...example }] });
+      const response = await json(await app.GET(null, { params: Promise.resolve({ code: "ABCDEFGHJKLM" }) }));
+      assert.equal(response.status, 200);
+      if (example.coordinates) {
+        assert.deepEqual(response.body.location, { type: "Point", coordinates: example.coordinates });
+        assert.equal(response.body.locationPrecision, example.locationVisibility);
+      } else {
+        assert.equal(Object.hasOwn(response.body, "location"), false);
+        assert.equal(Object.hasOwn(response.body, "locationPrecision"), false);
+      }
+      assert.equal(Object.hasOwn(response.body, "photoUrl"), example.photo);
+      assert.equal(response.body.evidenceRemoved, false);
+      for (const field of ["description", "locationVisibility", "photoVisibility", "deleteEvidenceOnResolution", "publicLocation", "photoPathname"]) {
+        assert.equal(Object.hasOwn(response.body, field), false);
+      }
+    });
+  }
+});
+
+test("GET suppresses stale evidence fields after resolution deletion", async () => {
+  const stored = {
+    trackingCode: "ABCDEFGHJKLM",
+    type: "roads",
+    location: { type: "Point", coordinates: [-74.006, 40.7128] },
+    publicLocation: { type: "Point", coordinates: [-74.01, 40.71] },
+    locationVisibility: "approximate",
+    photoVisibility: "tracking",
+    deleteEvidenceOnResolution: true,
+    photoUrl: "https://blob.test/reports/ABCDEFGHJKLM.jpg",
+    status: "fixed",
+    statusHistory: [],
+    createdAt: NOW,
+    evidenceRemovedAt: NOW,
+  };
+  const app = harness({ initialReports: [stored] });
+  const response = await json(await app.GET(null, { params: Promise.resolve({ code: "ABCDEFGHJKLM" }) }));
+  assert.equal(response.body.evidenceRemoved, true);
+  assert.equal(Object.hasOwn(response.body, "location"), false);
+  assert.equal(Object.hasOwn(response.body, "photoUrl"), false);
 });
 
 test("GET returns 404 for invalid and unavailable tracking codes", async (t) => {

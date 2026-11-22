@@ -8,10 +8,14 @@ export const getSession = () => globalThis.__adminReportTest.session;
 const databaseModule = `
 export default Promise.resolve({ db: () => globalThis.__adminReportTest.db });
 `;
+const blobModule = `
+export const del = (path) => globalThis.__adminReportTest.deleteBlob(path);
+`;
 const hooks = {
   "@/lib/auth": `data:text/javascript,${encodeURIComponent(authModule)}`,
   "@/lib/mongodb": `data:text/javascript,${encodeURIComponent(databaseModule)}`,
   "@/lib/reportTypes": new URL("../lib/reportTypes.js", import.meta.url).href,
+  "@vercel/blob": `data:text/javascript,${encodeURIComponent(blobModule)}`,
 };
 registerHooks({
   resolve(specifier, context, nextResolve) {
@@ -26,14 +30,23 @@ registerHooks({
 const { PATCH } = await import("../app/api/admin/reports/[id]/route.js");
 const ID = "507f1f77bcf86cd799439011";
 
-function fixture() {
+function fixture({ report = { status: "in_progress" }, deleteError = null } = {}) {
   const calls = [];
+  calls.deletions = [];
   globalThis.__adminReportTest = {
     session: { email: "roads@example.test", types: ["roads"] },
+    async deleteBlob(path) {
+      calls.deletions.push(path);
+      if (deleteError) throw deleteError;
+    },
     db: {
       collection(name) {
         assert.equal(name, "reports");
         return {
+          async findOne(filter) {
+            calls.push({ filter });
+            return report;
+          },
           async updateOne(filter, update) {
             calls.push({ filter, update });
             const allowed = !filter.type || filter.type.$in.includes("roads");
@@ -115,6 +128,61 @@ test("invalid ids and statuses fail before persistence", async (t) => {
       assert.equal(response.status, 400);
       assert.equal((await response.json()).error, expected);
       assert.equal(calls.length, 0);
+    });
+  }
+});
+
+function privacyReport() {
+  return {
+    status: "in_progress",
+    location: { type: "Point", coordinates: [-74.006, 40.7128] },
+    publicLocation: { type: "Point", coordinates: [-74.01, 40.71] },
+    locationVisibility: "approximate",
+    photoVisibility: "staff",
+    deleteEvidenceOnResolution: true,
+    photoUrl: "https://blob.test/reports/ABCDEFGHJKLM.jpg",
+    photoPathname: "reports/ABCDEFGHJKLM.jpg",
+  };
+}
+
+test("resolving an opted-in report deletes its blob and removes all evidence references", async () => {
+  const calls = fixture({ report: privacyReport() });
+  const { request, context } = input({ status: "fixed", note: "Repair complete" });
+  const response = await PATCH(request, context);
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.deletions, ["reports/ABCDEFGHJKLM.jpg"]);
+  const update = calls.find((entry) => entry.update)?.update;
+  assert.deepEqual(update.$unset, { location: "", publicLocation: "", photoUrl: "", photoPathname: "" });
+  assert.equal(update.$set.status, "fixed");
+  assert.equal(update.$set.evidenceRemovedAt instanceof Date, true);
+  assert.equal(update.$set.evidenceRemovedAt.getTime(), update.$set.updatedAt.getTime());
+});
+
+test("a blob deletion failure leaves the report unfixed for retry", async () => {
+  const calls = fixture({ report: privacyReport(), deleteError: new Error("storage unavailable") });
+  const { request, context } = input({ status: "fixed" });
+  const response = await PATCH(request, context);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "Evidence deletion is temporarily unavailable" });
+  assert.deepEqual(calls.deletions, ["reports/ABCDEFGHJKLM.jpg"]);
+  assert.equal(calls.some((entry) => entry.update), false);
+});
+
+test("legacy and opt-out reports keep evidence when resolved", async (t) => {
+  const reports = [
+    { status: "in_progress", photoUrl: "https://blob.test/legacy.jpg", photoPathname: "legacy.jpg" },
+    { ...privacyReport(), deleteEvidenceOnResolution: false },
+  ];
+  for (const report of reports) {
+    await t.test(report.deleteEvidenceOnResolution === undefined ? "legacy" : "opt out", async () => {
+      const calls = fixture({ report });
+      const { request, context } = input({ status: "fixed" });
+      const response = await PATCH(request, context);
+      assert.equal(response.status, 200);
+      assert.deepEqual(calls.deletions, []);
+      const update = calls.find((entry) => entry.update)?.update;
+      assert.equal(Object.hasOwn(update, "$unset"), false);
+      assert.equal(Object.hasOwn(update.$set, "evidenceRemovedAt"), false);
     });
   }
 });

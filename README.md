@@ -127,8 +127,12 @@ docs/                Architecture, privacy, database, and verification notes
 
 - Residents do not need an account.
 - A tracking code is required to read a public report.
+- Interactive OpenStreetMap tiles load only after the reporter chooses to load the map; coordinates can always be entered manually.
+- New reports default to an approximate public location and staff-only photo. Reporters can choose exact or staff-only location and can include the photo on the tracking page.
+- Reporters can opt into photo and location deletion when staff mark the report fixed. Status history remains available.
+- Browser tracking-code storage is opt-in, and saved codes can be removed individually or all at once from the tracking page.
 - Staff passwords are bcrypt-hashed; staff sessions use signed HTTP-only cookies.
-- Report photos are stored in Vercel Blob and stripped of image metadata by the Android client.
+- Report photos are stored in Vercel Blob and stripped of image metadata by the web and Android clients before upload.
 - Staff status notes are public. Do not place private case information in those notes.
 - An optional municipal boundary can restrict accepted coordinates; see `.env.example`.
 

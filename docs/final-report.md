@@ -10,11 +10,11 @@ The project contains a native Java Android client and a Next.js public/staff web
 2. Place a pin by tapping the map, dragging the marker, or requesting device location.
 3. Provide a camera or gallery photo and an optional description.
 4. Submit multipart data to `POST /api/reports`.
-5. Receive and save an opaque tracking code. No staff session, user name, account, email, postal address, or device identifier is requested.
+5. Receive an opaque tracking code and choose whether to save it in browser storage. No staff session, user name, account, email, postal address, or device identifier is requested.
 
 ### Track an incident
 
-`GET /api/reports/{code}` exposes only the category, public location, evidence URL, current status, creation timestamp, and public status-history notes. Public clients neither submit staff updates nor receive the report’s internal ObjectId. The Android recent-code list is local to the device. Server logs or analytics for the tracking-code route are outside this repository’s configuration and must not be populated with lookup codes.
+`GET /api/reports/{code}` exposes only the category, reporter-approved public location and evidence URL, current status, creation timestamp, and public status-history notes. New reports default to approximate coordinates and staff-only photos; the reporter can select exact or staff-only location, tracking-visible photos, and evidence deletion on resolution. Public clients neither submit staff updates nor receive the report’s internal ObjectId. Browser recent-code storage is opt-in and removable. The Android recent-code list is local to the device. Server logs or analytics for the tracking-code route are outside this repository’s configuration and must not be populated with lookup codes.
 
 ### Staff
 
