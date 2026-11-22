@@ -1,60 +1,146 @@
 # Civicpin
 
-Anonymous municipal incident reporting with a native Java Android client, public web reporting/tracking, and an authenticated staff dashboard.
+**Report a local problem. Follow the response. No account required.**
 
-## Web setup
+Civicpin is a civic incident-reporting platform for residents and response teams. A resident can send a photo, choose a location on the map, and receive a private tracking link. Staff can review the same report, update its status, and leave public notes from one shared queue.
 
-```sh
-npm ci
-cp .env.example .env.local
-# Set real MONGODB_URI, AUTH_SECRET, and BLOB_READ_WRITE_TOKEN values.
-node --env-file=.env.local scripts/create-staff.mjs email@example.org password all
-node --env-file=.env.local scripts/setup-indexes.mjs
-```
+The project includes a Next.js website and a **native Android app**—not a WebView wrapper. Both use the same API and MongoDB data, so an update made by staff appears on the website and in the app without a separate sync step.
 
-The setup scripts and their exact arguments are documented in `scripts/`. Staff authentication uses signed HTTP-only session cookies. Public report and tracking requests need no account and must never be pointed at a private staff API.
+**[Open Civicpin](https://incident-app-chi.vercel.app)** · **[Download the Android app](https://github.com/itz-hashir/civicpin/releases/latest/download/Incident-App-v1.1.apk)** · **[Latest release](https://github.com/itz-hashir/civicpin/releases/latest)**
 
-- `/report` submits category, coordinates, optional description, and one JPEG/PNG/WebP photo (maximum 4.5 MB).
-- `/track` retrieves the current status and public history using a 12-character private tracking code.
-- `/admin` is the staff-only type-scoped queue, filtered list, status updates, and public status notes.
+## Why Civicpin?
 
-MongoDB lazily connects on the first real API request. A missing database configuration therefore does not prevent a production build; it produces a request-time service error.
+Public reporting should be simple for residents and manageable for the people responding to reports.
 
-## Native Android
+| For residents | For staff |
+| --- | --- |
+| Report without creating an account | Sign in to a protected dashboard |
+| Add a photo, category, map location, and description | See reports assigned to their incident types |
+| Keep a private 12-character tracking code | Move reports from submitted to in progress to fixed |
+| Follow public status notes as work happens | Add notes that explain what changed |
 
-`android/` is a standalone Gradle Java application, not a WebView shell. It uses OSMDroid for map input, native Photo Picker/camera capture, metadata-free JPEG processing, and OkHttp for the same API.
+## The Android app
 
-Requirements: JDK 17, Android SDK 36, minimum supported Android SDK 26 (Android 8).
+The Android client provides native report submission, photo picking or camera capture, an OSMDroid map picker, public tracking, and automatic status refresh. Image metadata is removed before upload.
+
+- **Current version:** 1.1 (`versionCode 2`)
+- **Requires:** Android 8.0 (API 26) or newer
+- **Package:** `com.incidentapp.android`
+- **Download:** [Incident-App-v1.1.apk](https://github.com/itz-hashir/civicpin/releases/latest/download/Incident-App-v1.1.apk)
+
+The APK is signed and zip-aligned, but it is distributed through GitHub rather than Google Play. To install it, download the APK and allow **Install unknown apps** for the browser or file manager you use. Android 1.1 uses the same signing certificate as the earlier prototype, so it can update that installation.
+
+The release APK talks only to the HTTPS production API. For a local backend, build a debug APK with:
 
 ```sh
 cd android
-./gradlew testDebugUnitTest assembleDebug lintDebug
-./gradlew testReleaseUnitTest assembleRelease
+./gradlew -PcivicpinApiBaseUrl=http://YOUR_HOST:3000 assembleDebug
 ```
 
-On ordinary AMD64 hosts, no AAPT2 override is needed. For an ARM64 host whose official AAPT2 binary is unavailable, pass it only for that build:
+Use `10.0.2.2` instead of `localhost` when the backend runs on the host of the stock Android emulator.
+
+## Run the website locally
+
+### Requirements
+
+- Node.js 22 or newer
+- A MongoDB database
+- A Vercel Blob store for photo uploads
+
+### Setup
 
 ```sh
-./gradlew -Pandroid.aapt2FromMavenOverride=/absolute/path/to/aapt2 testDebugUnitTest assembleDebug
+git clone https://github.com/itz-hashir/civicpin.git
+cd civicpin
+npm ci
+cp .env.example .env.local
 ```
 
-Never commit a host-specific AAPT2 path or `local.properties`.
+Fill in these values in `.env.local`:
 
-The normal API origin is `https://incident-app-chi.vercel.app`, baked into the build. For local debugging only, pass `-PcivicpinApiBaseUrl=http://YOUR_HOST:3000` and configure the appropriate debug-only cleartext network policy. Localhost is `10.0.2.2` inside the stock Android emulator. The delivered release remains HTTPS-only by default.
+```dotenv
+MONGODB_URI=mongodb+srv://...
+AUTH_SECRET=a-long-random-secret
+BLOB_READ_WRITE_TOKEN=vercel_blob_rw_...
+APP_ORIGIN=http://localhost:3000
+```
 
-The release needs your signing key. `assembleRelease` produces an unsigned APK. Align it with `zipalign -p 4`, then sign with `apksigner`. The delivered APK here is signed with a one-off local prototype key, not a Google Play/upload signing key. Preserve your own future signing key consistently for application updates.
+Create the database indexes and your first staff account:
 
-**Deployment and secrets:** deploy this commit to the existing Vercel project at the configured HTTPS origin. Set `MONGODB_URI`, `AUTH_SECRET`, and `BLOB_READ_WRITE_TOKEN` as encrypted Vercel environment variables accessible only to the project owner. MongoDB must also authorize the Vercel deployment's outbound network. GitHub Actions secrets are CI-only and do not automatically configure Vercel. Never commit `.env.local` or put credentials in the Android APK; the app contains only the public HTTPS API origin.
+```sh
+node --env-file=.env.local scripts/setup-indexes.mjs
+node --env-file=.env.local scripts/create-staff.mjs email@example.org your-password all
+npm run dev
+```
 
-## Realtime updates
+Open **http://localhost:3000**. Public reporting is at `/report`, tracking is at `/track`, and staff sign in at `/login`.
 
-The public tracking page, the staff dashboard and the native Android app poll the same API every five seconds while visible. A staff status change or status note appears on public tracking and in the Android app without a manual refresh. The staff queue picks up a newly submitted public report the same way. The website and APK share MongoDB, not separate offline copies.
+You can generate a suitable session secret with `openssl rand -hex 32`. Never commit `.env.local`, staff credentials, database credentials, Blob tokens, or Android signing keys.
 
-## Verification and operational details
+## Build and check the project
+
+Website:
+
+```sh
+npm run lint
+npm run build
+```
+
+Android (JDK 17 and Android SDK 36 required):
+
+```sh
+cd android
+./gradlew testReleaseUnitTest lintRelease assembleRelease
+```
+
+`assembleRelease` creates an unsigned APK. For distribution, align and sign it with your private release key:
+
+```sh
+zipalign -p 4 app/build/outputs/apk/release/app-release-unsigned.apk Incident-App.apk
+apksigner sign --ks /path/to/private-release-key.jks Incident-App.apk
+apksigner verify --verbose Incident-App.apk
+```
+
+On ARM64 build hosts without an official AAPT2 binary, pass `-Pandroid.aapt2FromMavenOverride=/absolute/path/to/aapt2` for that build. Do not commit host-specific paths or `android/local.properties`.
+
+## Deploy your own instance
+
+1. Import the repository into Vercel and select the **Next.js** framework preset.
+2. Add `MONGODB_URI`, `AUTH_SECRET`, and `BLOB_READ_WRITE_TOKEN` to the Production environment.
+3. Make sure MongoDB accepts connections from the deployment.
+4. Deploy, then change `APP_ORIGIN`, `app/layout.js`, and `android/app/build.gradle` to your public HTTPS origin before building your own APK.
+
+The production deployment at [incident-app-chi.vercel.app](https://incident-app-chi.vercel.app) has been checked with a real photo upload, report creation, staff status changes, Blob storage, and automatic public tracking refresh. See [the verification record](docs/verification.md) for details.
+
+## Project layout
+
+```text
+app/                 Next.js pages and API routes
+components/          Shared web interface components
+lib/                 Authentication, database, and report helpers
+scripts/             Index setup and staff-account utilities
+android/             Standalone native Java Android application
+docs/                Architecture, privacy, database, and verification notes
+```
+
+## Privacy and data
+
+- Residents do not need an account.
+- A tracking code is required to read a public report.
+- Staff passwords are bcrypt-hashed; staff sessions use signed HTTP-only cookies.
+- Report photos are stored in Vercel Blob and stripped of image metadata by the Android client.
+- Staff status notes are public. Do not place private case information in those notes.
+- An optional municipal boundary can restrict accepted coordinates; see `.env.example`.
+
+## Documentation
 
 - [Verification evidence](docs/verification.md)
 - [Database design](docs/database-design.md)
-- [Implementation, deployment, privacy, and real-user testing protocol](docs/final-report.md)
-- [Implementation plan](docs/superpowers/plans/2026-11-19-native-incident-platform.md)
+- [Implementation, deployment, and privacy notes](docs/final-report.md)
+- [Native platform implementation plan](docs/superpowers/plans/2026-11-19-native-incident-platform.md)
 
-No human usability study or physical-device Android run is claimed by the automated reports.
+The documented checks include production builds, Android release unit tests, APK signature/package inspection, and a live production workflow. A physical-device UI test and a human usability study have not been performed; those limitations are stated rather than presented as completed testing.
+
+## Contributing
+
+Issues and pull requests are welcome. Please keep secrets and real reporter data out of issues, commits, screenshots, and test fixtures. For behavior changes, include the narrowest check that exercises the affected path.
