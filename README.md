@@ -40,7 +40,7 @@ On ordinary AMD64 hosts, no AAPT2 override is needed. For an ARM64 host whose of
 
 Never commit a host-specific AAPT2 path or `local.properties`.
 
-The normal API origin is `https://incident-app-gamma.vercel.app`, baked into the build. For local debugging only, pass `-PcivicpinApiBaseUrl=http://YOUR_HOST:3000` and configure the appropriate debug-only cleartext network policy. Localhost is `10.0.2.2` inside the stock Android emulator. The delivered release remains HTTPS-only by default.
+The normal API origin is `https://incident-app-chi.vercel.app`, baked into the build. For local debugging only, pass `-PcivicpinApiBaseUrl=http://YOUR_HOST:3000` and configure the appropriate debug-only cleartext network policy. Localhost is `10.0.2.2` inside the stock Android emulator. The delivered release remains HTTPS-only by default.
 
 The release needs your signing key. `assembleRelease` produces an unsigned APK. Align it with `zipalign -p 4`, then sign with `apksigner`. The delivered APK here is signed with a one-off local prototype key, not a Google Play/upload signing key. Preserve your own future signing key consistently for application updates.
 

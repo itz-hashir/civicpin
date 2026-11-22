@@ -10,15 +10,15 @@ android {
         applicationId "com.incidentapp.android"
         minSdk 26
         targetSdk 36
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField "String", "API_BASE_URL", '"https://incident-app-gamma.vercel.app"'
+        buildConfigField "String", "API_BASE_URL", '"https://incident-app-chi.vercel.app"'
     }
 
     buildTypes {
         debug {
-            def override = providers.gradleProperty("civicpinApiBaseUrl").orElse("https://incident-app-gamma.vercel.app").get()
+            def override = providers.gradleProperty("civicpinApiBaseUrl").orElse("https://incident-app-chi.vercel.app").get()
             buildConfigField "String", "API_BASE_URL", groovy.json.JsonOutput.toJson(override)
         }
         release {

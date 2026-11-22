@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  metadataBase: new URL("https://incident-app-gamma.vercel.app"),
+  metadataBase: new URL("https://incident-app-chi.vercel.app"),
   title: {
     default: "Civicpin | Anonymous civic reporting",
     template: "%s",

@@ -126,3 +126,20 @@ The current branch's production Next.js build was run locally against the real M
 **Not verified in this environment:** a real write to Vercel Blob. There is no Blob token in the local `.env`, and an authorized Vercel project edit is not available. The production deployment will need `BLOB_READ_WRITE_TOKEN` before photo submission can succeed. Also, the public Vercel deployment still runs the older branch until the operator pushes; its `POST /api/reports` is **404**. Android UI behavior is covered by compiling, release unit tests, signing and archive verification; no emulator or physical device is attached for a runtime test.
 
 The rendered DOM check used a local headless browser against the current production build for the public tracking page only. Staff data was checked through the authenticated API and the deployed tracking response; no staff credentials are recorded here.
+
+### New production deployment (2026-11-22)
+
+The current source was deployed to the new Vercel project `incident-app` at `https://incident-app-chi.vercel.app`. The project initially used Vercel's `Other` framework preset and served a static 404; changing the preset to `Next.js` produced working server routes. Production has `MONGODB_URI`, `AUTH_SECRET`, and a Blob-backed `BLOB_READ_WRITE_TOKEN` configured as environment variables. No secret values are in this repository.
+
+| Production check | Result |
+| --- | --- |
+| Public home page and health API | **200**, Civicpin page rendered and `{"ok":true}` |
+| Submission route with invalid multipart body | **400**, route exists without creating a report |
+| Real JPEG multipart submission | **201**, tracking code returned and public Blob URL created |
+| Public tracking after creation | **200**, correct coordinates, photo URL, status and history |
+| Production staff browser login and queue | Temporary all-office staff signed in and saw only the temporary report |
+| Staff browser status updates | `submitted → in_progress → fixed`, both public notes persisted |
+| Automatic public production refresh | Open tracking page received both updates without reload/navigation |
+| Exact fixture cleanup | One report, one staff account and one Blob object deleted; database returned to one report and two staff accounts; Blob listing had zero matching objects |
+
+The new Android release uses this production origin and version `1.1` (`versionCode 2`) so devices with the old endpoint receive a clean update.

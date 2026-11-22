@@ -28,7 +28,7 @@ No cookies, registration, names, email, device ID, IP storage, or other identity
 Keep existing `GET /api/admin/reports?status={submitted|in_progress|fixed}` and authenticated `PATCH /api/admin/reports/{id}` with `{ status, note }`. Status history notes can be entered from the staff dashboard.
 
 ### Public base URL
-`https://incident-app-gamma.vercel.app`. Local builds may override this with a debug-only build field.
+`https://incident-app-chi.vercel.app`. Local builds may override this with a debug-only build field.
 
 ## Ownership / independent slices
 
